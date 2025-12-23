@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Manage Recipients</h2>
+
+<div class="card">
+    <h3>Import Recipients</h3>
+    <p>Upload CSV or Excel (Columns: Email, Name)</p>
+    <input type="file" id="file-upload" accept=".csv, .xlsx">
+    <button class="btn btn-primary" onclick="uploadFile(this)">Upload</button>
+</div>
+
+<div class="card">
+    <h3>Recipient List</h3>
+    <div class="input-group">
+        <input type="email" id="new-email" placeholder="Email" style="margin:0">
+        <input type="text" id="new-name" placeholder="Name" style="margin:0">
+        <button class="btn btn-secondary" onclick="addRecipient(this)">Add</button>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody id="recipient-list"></tbody>
+    </table>
+</div>
+
+<!-- Confirmation Modal -->
+<div id="confirmation-modal" class="modal">
+    <div class="modal-content">
+        <h3>Confirm Deletion</h3>
+        <p style="margin-bottom: 1.5rem; color: var(--text-muted);">Are you sure you want to remove this recipient? This action cannot be undone.</p>
+        <div class="form-actions" style="justify-content: flex-end; margin-top: 0;">
+            <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button id="confirm-delete-btn" class="btn btn-danger" onclick="confirmDelete()">Delete</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let recipientToDelete = null;
+
+    async function loadRecipients() {
+        const data = await apiCall('/api/recipients');
+        const tbody = document.getElementById('recipient-list');
+        tbody.innerHTML = data.map(r => `
+            <tr>
+                <td>${r.name}</td>
+                <td>${r.email}</td>
+                <td><button class="btn btn-danger" onclick="deleteRecipient('${r.email}')">Remove</button></td>
+            </tr>
+        `).join('');
+    }
+
+    async function addRecipient(btn) {
+        const email = document.getElementById('new-email').value;
+        const name = document.getElementById('new-name').value;
+        if(!email) return showToast('Email required', 'error');
+        
+        setLoading(btn, true);
+        try {
+            await apiCall('/api/recipients', 'POST', { email, name });
+            loadRecipients();
+            showToast('Recipient added');
+        } catch (e) {
+        } finally {
+            setLoading(btn, false);
+        }
+    }
+
+    async function deleteRecipient(email) {
+        recipientToDelete = email;
+        document.getElementById('confirmation-modal').classList.add('active');
+    }
+
+    function closeModal() {
+        document.getElementById('confirmation-modal').classList.remove('active');
+        recipientToDelete = null;
+    }
+
+    async function confirmDelete() {
+        if(!recipientToDelete) return;
+        
+        const btn = document.getElementById('confirm-delete-btn');
+        setLoading(btn, true);
+        
+        try {
+            await apiCall(`/api/recipients?email=${recipientToDelete}`, 'DELETE');
+            loadRecipients();
+            showToast('Recipient removed');
+            closeModal();
+        } catch (e) {
+            // Error handled by apiCall
+        } finally {
+            setLoading(btn, false);
+        }
+    }
+
+    async function uploadFile(btn) {
+        const fileInput = document.getElementById('file-upload');
+        if(fileInput.files.length === 0) return showToast('Select a file', 'error');
+        
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        
+        setLoading(btn, true);
+        try {
+            const res = await apiCall('/api/upload_recipients', 'POST', formData, true);
+            showToast(res.message);
+            loadRecipients();
+        } catch (e) {
+        } finally {
+            setLoading(btn, false);
+        }
+    }
+
+    loadRecipients();
+</script>
+{% endblock %}

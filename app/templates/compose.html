@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+<!-- Compose Page -->
+
+{% block content %}
+<h2>Compose Email</h2>
+
+<form id="email-form" onsubmit="sendEmail(event)">
+    <div class="card">
+        <h3>SMTP Settings (Session)</h3>
+        <div class="form-grid">
+            <div>
+                <input type="text" name="smtp_host" placeholder="SMTP Host (e.g., smtp.gmail.com)" required>
+                <div class="invalid-feedback">SMTP Host is required</div>
+            </div>
+            <div>
+                <input type="number" name="smtp_port" placeholder="Port (e.g., 587)" value="587" required>
+                <div class="invalid-feedback">Port is required</div>
+            </div>
+            <div>
+                <input type="email" name="smtp_email" placeholder="Your Email" required>
+                <div class="invalid-feedback">Please enter a valid email</div>
+            </div>
+            <div>
+                <input type="password" name="smtp_password" placeholder="App Password" required>
+                <div class="invalid-feedback">Password is required</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Message Details</h3>
+        <div>
+            <input type="text" name="subject" placeholder="Subject (Use {Name} for personalization)" required>
+            <div class="invalid-feedback">Subject is required</div>
+        </div>
+        <div>
+            <textarea name="body" rows="10" placeholder="HTML Body (Use {Name} for personalization)" required></textarea>
+            <div class="invalid-feedback">Body content is required</div>
+        </div>
+
+        <label>Attachments:</label>
+        <input type="file" name="attachments" multiple>
+        
+        <div class="form-actions">
+            <button type="button" class="btn btn-secondary" onclick="saveTemplate()">Save as Template</button>
+            <button type="submit" class="btn btn-primary">Send Bulk Email 🚀</button>
+        </div>
+    </div>
+</form>
+
+<div class="card">
+    <h3>Load Template</h3>
+    <select id="template-select" onchange="loadTemplate()">
+        <option value="">Select a template...</option>
+    </select>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function loadTemplates() {
+        const templates = await apiCall('/api/templates');
+        const select = document.getElementById('template-select');
+        templates.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = JSON.stringify(t);
+            opt.textContent = t.name;
+            select.appendChild(opt);
+        });
+    }
+
+    function loadTemplate() {
+        const val = document.getElementById('template-select').value;
+        if(!val) return;
+        const t = JSON.parse(val);
+        document.querySelector('[name="subject"]').value = t.subject;
+        document.querySelector('[name="body"]').value = t.body;
+        document.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
+    }
+
+    async function saveTemplate() {
+        const name = prompt("Enter template name:");
+        if(!name) return;
+        const subject = document.querySelector('[name="subject"]').value;
+        const body = document.querySelector('[name="body"]').value;
+        
+        await apiCall('/api/templates', 'POST', { name, subject, body });
+        showToast('Template saved');
+    }
+
+    async function sendEmail(e) {
+        e.preventDefault();
+        const form = document.getElementById('email-form');
+        const btn = form.querySelector('button[type="submit"]');
+        const formData = new FormData(form);
+        
+        if (!validateForm(form)) {
+            showToast('Please fix errors in the form', 'error');
+            return;
+        }
+
+        setLoading(btn, true);
+        showToast('Initiating sending process...', 'success');
+        
+        try {
+            const res = await apiCall('/api/send', 'POST', formData, true);
+            showToast(res.message);
+            form.reset();
+        } catch (err) {
+            // Error handled by apiCall
+        } finally {
+            setLoading(btn, false);
+        }
+    }
+
+    function validateInput(input) {
+        const isValid = input.checkValidity();
+        if (isValid) {
+            input.classList.remove('is-invalid');
+        } else {
+            input.classList.add('is-invalid');
+        }
+        return isValid;
+    }
+
+    function validateForm(form) {
+        const inputs = form.querySelectorAll('input[required], textarea[required]');
+        let isFormValid = true;
+        inputs.forEach(input => {
+            if (!validateInput(input)) isFormValid = false;
+        });
+        return isFormValid;
+    }
+
+    // Initialize validation listeners
+    document.querySelectorAll('input[required], textarea[required]').forEach(input => {
+        input.addEventListener('input', () => validateInput(input));
+        input.addEventListener('blur', () => validateInput(input));
+    });
+
+    loadTemplates();
+</script>
+{% endblock %}

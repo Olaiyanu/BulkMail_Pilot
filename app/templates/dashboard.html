@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Dashboard</h2>
+<div class="stats-grid">
+    <div class="card stat-card">
+        <div class="stat-number" id="sent-count">0</div>
+        <div class="stat-label">Sent</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-number" id="failed-count" style="color: var(--error)">0</div>
+        <div class="stat-label">Failed</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-number" id="scheduled-count" style="color: var(--accent)">0</div>
+        <div class="stat-label">Scheduled</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-number" id="delivered-count" style="color: var(--secondary)">0</div>
+        <div class="stat-label">Delivered</div>
+    </div>
+</div>
+
+<div class="form-grid" style="margin-bottom: 2rem;">
+    <div class="card">
+        <h3>Email Performance</h3>
+        <div style="height: 250px;"><canvas id="pieChart"></canvas></div>
+    </div>
+    <div class="card">
+        <h3>Sending Activity (Last 7 Days)</h3>
+        <div style="height: 250px;"><canvas id="barChart"></canvas></div>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Recent Activity Logs</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Recipient</th>
+                <th>Status</th>
+                <th>Details</th>
+            </tr>
+        </thead>
+        <tbody id="logs-table">
+            <!-- Populated by JS -->
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    let pieChart = null;
+    let barChart = null;
+
+    async function loadStats() {
+        try {
+            const data = await apiCall('/api/stats');
+            document.getElementById('sent-count').textContent = data.sent;
+            document.getElementById('failed-count').textContent = data.failed;
+            document.getElementById('scheduled-count').textContent = 0; // Placeholder
+            document.getElementById('delivered-count').textContent = data.sent; // Assuming Sent ~= Delivered
+            
+            updateCharts(data);
+
+            const tbody = document.getElementById('logs-table');
+            tbody.innerHTML = data.logs.map(log => `
+                <tr>
+                    <td>${log.timestamp}</td>
+                    <td>${log.recipient}</td>
+                    <td style="color: ${log.status === 'Sent' ? 'var(--secondary)' : 'var(--error)'}">${log.status}</td>
+                    <td>${log.error || '-'}</td>
+                </tr>
+            `).join('');
+        } catch (e) { console.error(e); }
+    }
+
+    function updateCharts(data) {
+        const ctxPie = document.getElementById('pieChart').getContext('2d');
+        const ctxBar = document.getElementById('barChart').getContext('2d');
+
+        if (pieChart) pieChart.destroy();
+        if (barChart) barChart.destroy();
+
+        // Pie Chart
+        pieChart = new Chart(ctxPie, {
+            type: 'doughnut',
+            data: {
+                labels: ['Sent', 'Failed'],
+                datasets: [{
+                    data: [data.sent, data.failed],
+                    backgroundColor: ['#10B981', '#EF4444'],
+                    borderWidth: 0
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+
+        // Bar Chart
+        if (data.chart_data) {
+            barChart = new Chart(ctxBar, {
+                type: 'bar',
+                data: {
+                    labels: data.chart_data.dates,
+                    datasets: [
+                        {
+                            label: 'Sent',
+                            data: data.chart_data.sent,
+                            backgroundColor: '#10B981',
+                            borderRadius: 4
+                        },
+                        {
+                            label: 'Failed',
+                            data: data.chart_data.failed,
+                            backgroundColor: '#EF4444',
+                            borderRadius: 4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { stacked: true, grid: { display: false } },
+                        y: { stacked: true, beginAtZero: true }
+                    }
+                }
+            });
+        }
+    }
+
+    loadStats();
+    setInterval(loadStats, 10000); // Auto-refresh
+</script>
+{% endblock %}
